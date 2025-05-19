@@ -89,6 +89,7 @@ class RobotControlUI:
 class RobotControl:
     def __init__(self):
         self.lcm_interface = LCMControl()
+        self.lcm_interface.start()
 
         self.stand_flag = True
         self.sitdown_flag = True
@@ -175,7 +176,7 @@ def main():
     parser.add_argument("-p", "--path", type=str, default=None)
     args = parser.parse_args()
 
-    # policy = ONNXModule(args.path)
+    policy = ONNXModule(args.path)
     robot_control = RobotControl()
     timer = Timer(0.02)
 
