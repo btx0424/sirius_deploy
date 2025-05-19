@@ -118,6 +118,14 @@ class RobotControl:
         self.stand_kp, self.stand_kd = 120.0, 2.0
         self.sitdown_kp, self.sitdown_kd = 100.0, 2.0
     
+    @property
+    def mode(self):
+        return self.lcm_interface.Mode
+    
+    @property
+    def send(self):
+        return self.lcm_interface.send
+    
     def command_handler(self):
         if self.lcm_interface.Mode == "Stand":
             if self.stand_flag == True:
@@ -189,6 +197,8 @@ def main():
             freq = 100 / (time.perf_counter() - t)
             t = time.perf_counter()
             print(f"Main Loop Frequency: {freq} Hz")
+            print(f"Mode: {robot_control.mode}, send: {robot_control.send}.")
+            print(f"State initialized: {robot_control.lcm_interface.state_initialized}, Gamepad initialized: {robot_control.lcm_interface.gamepad_initialized}.")
 
 
 if __name__ == "__main__":

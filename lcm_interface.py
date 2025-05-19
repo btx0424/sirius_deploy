@@ -52,9 +52,11 @@ default_joint_pos = [
 
 class LCMControl:
     def __init__(self):
-        self.lc = lcm.LCM("udpm://239.255.76.67:7667?ttl=255")
-        self.lc.subscribe("gamepad2controller", self.handle_data)
-        self.lc.subscribe("robot2controller", self.handle_gamepad)
+        self.lc_state = lcm.LCM("udpm://239.255.76.67:7667?ttl=255")
+        self.lc_state.subscribe("robot2controller", self.handle_data)
+
+        self.lc_gamepad = lcm.LCM("udpm://239.255.76.67:7667?ttl=255")
+        self.lc_gamepad.subscribe("gamepad2controller", self.handle_gamepad)
         
         self.buf_jpos = np.zeros((4, 12)) # ignore wheel jpos
         self.buf_jvel = np.zeros((4, 16))
@@ -99,15 +101,24 @@ class LCMControl:
             "leftStickAnalog": [0.0, 0.0]
         }
         self.command_msg = leg_control_command_lcmt()
+        self.state_initialized = False
+        self.gamepad_initialized = False
 
     def start(self):
         print("LCMControl start")
-        self.thread_lcm_receive = threading.Thread(target=self.run)
-        self.thread_lcm_receive.start()
+        thread_lc_state = threading.Thread(target=self.thread_lc_state)
+        thread_lc_gamepad = threading.Thread(target=self.thread_lc_gamepad)
+        thread_lc_state.start()
+        thread_lc_gamepad.start()
     
-    def run(self):
+    def thread_lc_state(self):
         while True:
-            self.lc.handle()
+            self.lc_state.handle()
+            time.sleep(0.001)
+    
+    def thread_lc_gamepad(self):
+        while True:
+            self.lc_gamepad.handle()
             time.sleep(0.001)
     
     def set_command(
@@ -123,7 +134,7 @@ class LCMControl:
         self.command_msg.kd_joint = kd_joint.tolist()
     
     def publish_command(self):
-        self.lc.publish("controller2robot", self.command_msg.encode())
+        self.lc_state.publish("controller2robot", self.command_msg.encode())
     
     def to_damping_mode(self):
         self.command_msg.q_des = [0.0] * 16
@@ -141,8 +152,10 @@ class LCMControl:
         self.buf_jvel = np.roll(self.buf_jvel, 1, axis=0)
         self.buf_jvel[0] = jvel
 
-        self.rot = R.from_quat(data.quat, scalar_first=True)
-        self.gyro = data.gyro
+        quat = np.asarray(self.state_msg.quat)[[1, 2, 3, 0]]
+        self.rot = R.from_quat(quat)
+        self.gyro = np.asarray(self.state_msg.gyro)
+        self.state_initialized = True
     
     def handle_gamepad(self, channel: str, data: gamepad_lcmt):
         msg = gamepad_lcmt.decode(data)
@@ -174,6 +187,7 @@ class LCMControl:
                 self.RL_Mode = "RL_Dog"
         elif self.gamepad_command["back"] == 1 & self.gamepad_command["y_button"] == 1:
                 self.RL_Mode = "RL_Stand"
+        self.gamepad_initialized = True
     
     def compute_observation(self):
         projected_gravity = self.rot.inv().apply(np.array([0, 0, -1.]))
