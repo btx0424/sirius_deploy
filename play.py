@@ -176,7 +176,7 @@ def main():
     parser.add_argument("-p", "--path", type=str, default=None)
     args = parser.parse_args()
 
-    policy = ONNXModule(args.path)
+    # policy = ONNXModule(args.path)
     robot_control = RobotControl()
     timer = Timer(0.02)
 

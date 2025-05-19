@@ -53,8 +53,8 @@ default_joint_pos = [
 class LCMControl:
     def __init__(self):
         self.lc = lcm.LCM("udpm://239.255.76.67:7667?ttl=255")
-        self.lc.subscribe("leg_control_data", self.handle_data)
-        self.lc.subscribe("gamepad", self.handle_gamepad)
+        self.lc.subscribe("gamepad2controller", self.handle_data)
+        self.lc.subscribe("robot2controller", self.handle_gamepad)
         
         self.buf_jpos = np.zeros((4, 12)) # ignore wheel jpos
         self.buf_jvel = np.zeros((4, 16))
@@ -101,12 +101,14 @@ class LCMControl:
         self.command_msg = leg_control_command_lcmt()
 
     def start(self):
+        print("LCMControl start")
         self.thread_lcm_receive = threading.Thread(target=self.run)
         self.thread_lcm_receive.start()
     
     def run(self):
         while True:
             self.lc.handle()
+            time.sleep(0.001)
     
     def set_command(
         self,
