@@ -1,0 +1,9 @@
+struct leg_control_command_lcmt {
+    string control_mode;
+    float tau_ff[16];
+    float q_des[16];
+    float qd_des[16];
+    float kp_joint[16];
+    float kd_joint[16];
+    float torque_desired[16];
+}

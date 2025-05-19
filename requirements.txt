@@ -1,0 +1,5 @@
+linuxfd
+lcm
+onnxruntime
+numpy
+scipy

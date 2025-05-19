@@ -1,0 +1,11 @@
+struct leg_control_data_lcmt {
+    float q[16];
+    float qd[16];
+    float tauIq[16];
+    float tauEst[16];
+    float uq[16];
+    float ud[16];
+    float quat[4];
+    float gyro[3];
+    float accelerometer[3];
+}
