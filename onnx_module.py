@@ -8,7 +8,7 @@ class ONNXModule:
     def __init__(self, path: str):
 
         self.ort_session = ort.InferenceSession(path, providers=["CPUExecutionProvider"])
-        with open(path.replace(".onnx", "_meta.json"), "r") as f:
+        with open(path.replace(".onnx", ".json"), "r") as f:
             self.meta = json.load(f)
         self.in_keys = [k if isinstance(k, str) else tuple(k) for k in self.meta["in_keys"]]
         self.out_keys = [k if isinstance(k, str) else tuple(k) for k in self.meta["out_keys"]]

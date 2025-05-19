@@ -117,6 +117,8 @@ class RobotControl:
         ])
         self.stand_kp, self.stand_kd = 120.0, 2.0
         self.sitdown_kp, self.sitdown_kd = 100.0, 2.0
+        
+        self.rl_action = np.zeros(16, dtype=np.float32)
     
     @property
     def mode(self):
@@ -126,14 +128,18 @@ class RobotControl:
     def send(self):
         return self.lcm_interface.send
     
+    @property
+    def initialized(self):
+        return self.lcm_interface.state_initialized and self.lcm_interface.gamepad_initialized
+    
     def command_handler(self):
         if self.lcm_interface.Mode == "Stand":
             if self.stand_flag == True:
                 self.stand_time_start = time.time()
-                q_current = np.asarray(self.lcm_interface.state_msg.q)
+                self.q_current = np.asarray(self.lcm_interface.state_msg.q)
                 self.stand_flag = False
             stand_time = time.time() - self.stand_time_start
-            q_desired = cubicBezier(q_current, self.jpos_stand, 0.5 * stand_time)
+            q_desired = cubicBezier(self.q_current, self.jpos_stand, 0.5 * stand_time)
             q_desired[12:] = 0.0
             jkp = np.zeros(16); jkp[:12] = self.stand_kp
             jkd = np.zeros(16); jkd[:12] = self.stand_kd
@@ -143,13 +149,13 @@ class RobotControl:
         elif self.lcm_interface.Mode == "Sitdown":
             if self.sitdown_flag == True:
                 self.sitdown_time_start = time.time()
-                q_current = np.asarray(self.lcm_interface.state_msg.q)
+                self.q_current = np.asarray(self.lcm_interface.state_msg.q)
                 self.sitdown_flag = False
             sitdown_time = time.time() - self.sitdown_time_start
             if sitdown_time <= 2.0:
-                q_desired = cubicBezier(q_current, self.jpos_sitdown, 0.5*sitdown_time)
+                q_desired = cubicBezier(self.q_current, self.jpos_sitdown, 0.5*sitdown_time)
             else:
-                q_desired = cubicBezier(q_current, self.jpos_pre_stand, 0.5*(sitdown_time-2.0))
+                q_desired = cubicBezier(self.jpos_sitdown, self.jpos_pre_stand, 0.5*(sitdown_time-2.0))
             q_desired[12:] = 0.0
             jkp = np.zeros(16); jkp[:12] = self.sitdown_kp
             jkd = np.zeros(16); jkd[:12] = self.sitdown_kd
@@ -157,7 +163,8 @@ class RobotControl:
             self.stand_flag = True
 
         elif self.lcm_interface.Mode == "RL":
-
+            q_des, qd_des, jkp, jkd = self.lcm_interface.parse_action(self.rl_action)
+            self.lcm_interface.set_command(q_des, qd_des, jkp, jkd)
             self.stand_flag = True
             self.sitdown_flag = True
 
@@ -166,6 +173,41 @@ class RobotControl:
         
         if self.lcm_interface.send:
             self.lcm_interface.publish_command()
+
+    def run(self, policy):
+        inp = {
+            "is_init": np.array([True]),
+            "hx": np.zeros((1, 128), dtype=np.float32),
+        }
+
+        dt = 0.01
+        timer = Timer(dt); log_interval = 2 // dt
+
+        def should_run_policy(i):
+            if policy is None and not self.initialized:
+                return False
+            return i % 2 == 0
+
+        t = time.perf_counter()
+        for i in itertools.count():
+            
+            if should_run_policy(i):
+                inp["command"] = self.lcm_interface.compute_command()
+                inp["policy"] = self.lcm_interface.compute_observation()
+                inp["is_init"]  = np.array([False], dtype=bool)
+                self.rl_action, carry = policy(inp)
+                inp = carry
+            
+            self.command_handler()
+            timer.sleep()
+
+            if i % log_interval == 0:
+                main_loop_freq = log_interval / (time.perf_counter() - t)
+                t = time.perf_counter()
+                print(f"Main Loop Frequency: {main_loop_freq:.2f} Hz")
+                print(f"Mode: {self.mode}, send: {self.send}.")
+                print(f"State initialized: {self.lcm_interface.state_initialized}, Gamepad initialized: {self.lcm_interface.gamepad_initialized}.")
+
 
 
 def cubicBezier(y0, yf, x):
@@ -184,21 +226,18 @@ def main():
     parser.add_argument("-p", "--path", type=str, default=None)
     args = parser.parse_args()
 
-    # policy = ONNXModule(args.path)
+    if args.path is not None:
+        policy_module = ONNXModule(args.path)
+        def policy(inp):
+            out = policy_module(inp)
+            action = out["action"].reshape(-1)
+            carry = {k[1]: v for k, v in out.items() if k[0] == "next"}
+            return action, carry
+    else:
+        policy = None
+    
     robot_control = RobotControl()
-    timer = Timer(0.02)
-
-    t = time.perf_counter()
-    for i in itertools.count():
-        robot_control.command_handler()
-        timer.sleep()
-
-        if i % 100 == 0:
-            freq = 100 / (time.perf_counter() - t)
-            t = time.perf_counter()
-            print(f"Main Loop Frequency: {freq} Hz")
-            print(f"Mode: {robot_control.mode}, send: {robot_control.send}.")
-            print(f"State initialized: {robot_control.lcm_interface.state_initialized}, Gamepad initialized: {robot_control.lcm_interface.gamepad_initialized}.")
+    robot_control.run(policy)
 
 
 if __name__ == "__main__":

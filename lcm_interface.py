@@ -66,6 +66,8 @@ class LCMControl:
         self.act_scaling = np.zeros(16)
         self.act_scaling[:12] = 0.5; self.act_scaling[12:] = 2.0
         self.def_jpos = np.array(default_joint_pos)
+        self.rot = R.identity()
+        self.gyro = np.zeros(3)
         
         self.cmd_lin_vel = np.zeros(2)
         self.cmd_ang_vel = np.zeros(3)
@@ -197,8 +199,8 @@ class LCMControl:
             self.buf_jpos.flatten(),
             self.buf_jvel.flatten(),
             self.buf_act.flatten(),
-        ])
-        return observation
+        ], dtype=np.float32)
+        return observation[None, :]
     
     def compute_command(self):
         self.cmd_lin_vel[0] = self.gamepad_command["left_stick"][1]
@@ -213,11 +215,14 @@ class LCMControl:
             self.cmd_phase,
             1 - self.cmd_phase,
             self.cmd_mode
-        ])
-        return command
+        ], dtype=np.float32)
+        return command[None, :]
     
     def parse_action(self, action: np.ndarray):
         assert len(action) == 16
+        self.buf_act = np.roll(self.buf_act, 1, axis=0)
+        self.buf_act[0] = action
+        
         action = action * self.act_scaling
         q_des = self.def_jpos.copy(); q_des[:12] += action[:12] # leg actions
         qd_des = np.zeros(16); qd_des[12:] = action[12:] # wheel actions
