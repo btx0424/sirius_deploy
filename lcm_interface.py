@@ -61,10 +61,16 @@ class LCMControl:
         self.buf_jpos = np.zeros((4, 12)) # ignore wheel jpos
         self.buf_jvel = np.zeros((4, 16))
         self.buf_act = np.zeros((2, 16))
-        self.jkp = np.zeros(16); self.jkp[:12] = 40.0
-        self.jkd = np.zeros(16); self.jkd[:12] = 1.0
+        
+        self.jkp = np.zeros(16)
+        self.jkp[:12] = 40.0
+        self.jkd = np.zeros(16)
+        self.jkd[:12] = 1.0; self.jkd[12:] = 2.0
+        
         self.act_scaling = np.zeros(16)
         self.act_scaling[:12] = 0.5; self.act_scaling[12:] = 2.0
+        self.applied_action = np.zeros(16)
+
         self.def_jpos = np.array(default_joint_pos)
         self.rot = R.identity()
         self.gyro = np.zeros(3)
@@ -222,8 +228,13 @@ class LCMControl:
         assert len(action) == 16
         self.buf_act = np.roll(self.buf_act, 1, axis=0)
         self.buf_act[0] = action
-        
-        action = action * self.act_scaling
-        q_des = self.def_jpos.copy(); q_des[:12] += action[:12] # leg actions
-        qd_des = np.zeros(16); qd_des[12:] = action[12:] # wheel actions
+        self.applied_action = self.applied_action * 0.2 + action * 0.8
+        applied_action = self.applied_action * self.act_scaling
+
+        # leg actions
+        q_des = self.def_jpos.copy()
+        q_des[:12] += applied_action[:12]
+        # wheel actions
+        qd_des = np.zeros(16)
+        qd_des[12:] = applied_action[12:]
         return q_des[self.isaac2real], qd_des[self.isaac2real], self.jkp, self.jkd
