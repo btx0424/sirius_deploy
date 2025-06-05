@@ -3,3 +3,4 @@ lcm
 onnxruntime
 numpy
 scipy
+h5py

@@ -190,6 +190,7 @@ class RobotControl:
 
         t = time.perf_counter()
         for i in itertools.count():
+            self.lcm_interface.update()
             
             if should_run_policy(i):
                 inp["command"] = self.lcm_interface.compute_command()
