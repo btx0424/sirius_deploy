@@ -93,7 +93,7 @@ class MujocoInterface:
         self.jvel = self.mj_data.qvel[6:][self.mujoco2isaac]
         self.quat_wxyz = self.mj_data.qpos[3:7]
         self.rot = R.from_quat(self.quat_wxyz, scalar_first=True)
-        self.gyro = self.rot.inv().apply(self.mj_data.qvel[3:6])
+        self.gyro = self.mj_data.qvel[3:6]
         self.projected_gravity = self.rot.inv().apply(np.array([0, 0, -1.]))
 
     def compute_observation(self):

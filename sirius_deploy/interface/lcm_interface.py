@@ -34,9 +34,9 @@ class Data:
         self.jkp = np.zeros(16)
         self.jkp[:12] = 40.0
         self.jkd = np.zeros(16)
-        self.jkd[:12] = 1.0; self.jkd[12:] = 2.0
+        self.jkd[:12] = 1.0; self.jkd[12:] = 5.0
 
-        self.wheel_scaling = 2.0
+        self.wheel_scaling = 10.0
         self.leg_scaling = 0.5
         self.applied_action = np.zeros(16)
 
