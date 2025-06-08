@@ -88,8 +88,9 @@ class RobotControlUI:
 
 class RobotControl:
     def __init__(self):
-        self.lcm_interface = LCMControl()
+        self.lcm_interface = LCMControl(use_gamepad=False)
         self.lcm_interface.start()
+        self.lcm_interface.send = True
 
         self.stand_flag = True
         self.sitdown_flag = True
@@ -127,10 +128,6 @@ class RobotControl:
     @property
     def send(self):
         return self.lcm_interface.send
-    
-    @property
-    def initialized(self):
-        return self.lcm_interface.state_initialized and self.lcm_interface.gamepad_initialized
     
     def command_handler(self):
         if self.lcm_interface.Mode == "Stand":
@@ -184,7 +181,7 @@ class RobotControl:
         timer = Timer(dt); log_interval = 2 // dt
 
         def should_run_policy(i):
-            if policy is None and not self.initialized:
+            if policy is None or not self.lcm_interface.initialized:
                 return False
             return i % 2 == 0
 
@@ -206,7 +203,7 @@ class RobotControl:
                 main_loop_freq = log_interval / (time.perf_counter() - t)
                 t = time.perf_counter()
                 print(f"Main Loop Frequency: {main_loop_freq:.2f} Hz")
-                print(f"Mode: {self.mode}, send: {self.send}.")
+                print(f"Mode: {self.mode}, send: {self.send}, initialized: {self.lcm_interface.initialized}.")
                 print(f"State initialized: {self.lcm_interface.state_initialized}, Gamepad initialized: {self.lcm_interface.gamepad_initialized}.")
 
 

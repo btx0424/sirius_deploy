@@ -53,12 +53,14 @@ default_joint_pos = [
 
 
 class LCMControl:
-    def __init__(self):
+    def __init__(self, use_gamepad: bool):
         self.lc_state = lcm.LCM("udpm://239.255.76.67:7667?ttl=255")
         self.lc_state.subscribe("robot2controller", self.handle_data)
-
-        self.lc_gamepad = lcm.LCM("udpm://239.255.76.67:7667?ttl=255")
-        self.lc_gamepad.subscribe("gamepad2controller", self.handle_gamepad)
+        
+        self.use_gamepad = use_gamepad
+        if self.use_gamepad:
+            self.lc_gamepad = lcm.LCM("udpm://239.255.76.67:7667?ttl=255")
+            self.lc_gamepad.subscribe("gamepad2controller", self.handle_gamepad)
         
         self.buf_jpos = np.zeros((4, 12)) # ignore wheel jpos
         self.buf_jvel = np.zeros((4, 16))
@@ -89,7 +91,7 @@ class LCMControl:
         self.isaac2real = [joint_names_isaac.index(name) for name in joint_names_real]
         self.real2isaac = [joint_names_real.index(name) for name in joint_names_isaac]
         
-        self.Mode = "Passive"
+        self.Mode = "RL" # "Passive"
         self.RL_Mode = "RL_Dog"
         self.send = False
         self.gamepad_command = {
@@ -127,25 +129,33 @@ class LCMControl:
         self.log_file.attrs["max_ptr"] = init_length
         self.log_file.create_dataset("gyro", data=np.zeros((init_length, 3)), maxshape=(None, 3))
         self.log_file.create_dataset("projected_gravity", data=np.zeros((init_length, 3)), maxshape=(None, 3))
-        self.log_file.create_dataset("jpos", data=np.zeros((init_length, 12)), maxshape=(None, 12))
-        self.log_file.create_dataset("jvel", data=np.zeros((init_length, 12)), maxshape=(None, 12))
+        self.log_file.create_dataset("jpos", data=np.zeros((init_length, 16)), maxshape=(None, 16))
+        self.log_file.create_dataset("jvel", data=np.zeros((init_length, 16)), maxshape=(None, 16))
         self.log_file.create_dataset("action", data=np.zeros((init_length, 16)), maxshape=(None, 16))
         self.log_file.create_dataset("quat", data=np.zeros((init_length, 4)), maxshape=(None, 4))
         self.log_file.create_dataset("command", data=np.zeros((init_length, command_dim)), maxshape=(None, command_dim))
 
+    @property
+    def initialized(self):
+        if self.use_gamepad:
+            return self.state_initialized and self.gamepad_initialized
+        else:
+            return self.state_initialized
+        
     def start(self):
         print("LCMControl start")
         thread_lc_state = threading.Thread(target=self.thread_lc_state)
-        thread_lc_gamepad = threading.Thread(target=self.thread_lc_gamepad)
         thread_lc_state.start()
-        thread_lc_gamepad.start()
+        if self.use_gamepad:
+            thread_lc_gamepad = threading.Thread(target=self.thread_lc_gamepad)
+            thread_lc_gamepad.start()
     
     def update(self):
         """
         Update states and log data. This method is called at a frequency higher than 
         the control frequency but lower than the lcm handle frequency.
         """
-        if not (self.state_initialized and self.gamepad_initialized):
+        if not self.initialized:
             return
         self.projected_gravity = self.rot.inv().apply(np.array([0, 0, -1.]))
 
@@ -212,7 +222,9 @@ class LCMControl:
         self.quat_xyzw = np.asarray(self.state_msg.quat)[[1, 2, 3, 0]]
         self.rot = R.from_quat(self.quat_xyzw)
         self.gyro = np.asarray(self.state_msg.gyro)
-        self.state_initialized = True
+        if not self.state_initialized:
+            print("State Initialized.")
+            self.state_initialized = True
     
     def handle_gamepad(self, channel: str, data: gamepad_lcmt):
         msg = gamepad_lcmt.decode(data)
@@ -244,7 +256,9 @@ class LCMControl:
                 self.RL_Mode = "RL_Dog"
         elif self.gamepad_command["back"] == 1 & self.gamepad_command["y_button"] == 1:
                 self.RL_Mode = "RL_Stand"
-        self.gamepad_initialized = True
+        if not self.gamepad_initialized:
+            print("Gamepad Initialized.")
+            self.gamepad_initialized = True
     
     def compute_observation(self):
         observation = np.concatenate([
