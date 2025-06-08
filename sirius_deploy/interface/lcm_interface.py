@@ -31,10 +31,10 @@ class Data:
         self.buf_jvel = np.zeros((4, 16))
         self.buf_act = np.zeros((2, 16))
 
-        self.jkp = np.zeros(16)
-        self.jkp[:12] = 40.0
-        self.jkd = np.zeros(16)
-        self.jkd[:12] = 1.0; self.jkd[12:] = 5.0
+        self.jkp_isaac = np.zeros(16)
+        self.jkp_isaac[:12] = 40.0
+        self.jkd_isaac = np.zeros(16)
+        self.jkd_isaac[:12] = 1.0; self.jkd_isaac[12:] = 5.0
 
         self.wheel_scaling = 10.0
         self.leg_scaling = 0.5
@@ -282,6 +282,6 @@ class LCMControl:
         return (
             q_des[self.isaac2real],
             qd_des[self.isaac2real],
-            self.data.jkp[self.isaac2real],
-            self.data.jkd[self.isaac2real]
+            self.data.jkp_isaac[self.isaac2real],
+            self.data.jkd_isaac[self.isaac2real]
         )

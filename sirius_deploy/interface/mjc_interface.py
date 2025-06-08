@@ -33,6 +33,7 @@ class MujocoInterface:
         self.def_jpos = np.array(DEFAULT_JOINT_POS)
         self.rot = R.identity()
         self.gyro = np.zeros(3)
+        self.jvel = np.zeros(16)
 
         self.cmd_lin_vel = np.zeros(2)
         self.cmd_ang_vel = np.zeros(3)
@@ -144,8 +145,8 @@ class MujocoInterface:
         return (
             q_des[self.isaac2mujoco],
             qd_des[self.isaac2mujoco],
-            self.data.jkp[self.isaac2mujoco],
-            self.data.jkd[self.isaac2mujoco]
+            self.data.jkp_isaac[self.isaac2mujoco],
+            self.data.jkd_isaac[self.isaac2mujoco]
         )
 
 
