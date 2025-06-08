@@ -8,21 +8,14 @@ import h5py
 import os
 
 from scipy.spatial.transform import Rotation as R
-from lcm_types import (
+from sirius_deploy.interface.lcm_types import (
     leg_control_command_lcmt, 
     leg_control_data_lcmt, 
     gamepad_lcmt
 )
-from onnx_module import ONNXModule
-from timerfd import Timer
+from sirius_deploy.interface.constants import JOINT_NAMES_ISAAC, DEFAULT_JOINT_POS
+from sirius_deploy.timerfd import Timer
 
-
-joint_names_isaac = [
-    "LF_HAA", "LH_HAA", "RF_HAA", "RH_HAA",
-    "LF_HFE", "LH_HFE", "RF_HFE", "RH_HFE",
-    "LF_KFE", "LH_KFE", "RF_KFE", "RH_KFE",
-    "LF_WHEEL", "LH_WHEEL", "RF_WHEEL", "RH_WHEEL"
-]
 
 joint_names_real = [
     "RF_HAA", "RF_HFE", "RF_KFE",
@@ -32,24 +25,20 @@ joint_names_real = [
     "RF_WHEEL", "LF_WHEEL", "RH_WHEEL", "LH_WHEEL"
 ]
 
-default_joint_pos = [
-    0.0,
-    0.0,
-    0.0,
-    0.0,
-    0.4000000059604645,
-    -0.4000000059604645,
-    0.4000000059604645,
-    -0.4000000059604645,
-    -1.2000000476837158,
-    1.2000000476837158,
-    -1.2000000476837158,
-    1.2000000476837158,
-    0.0,
-    0.0,
-    0.0,
-    0.0
-]
+class Data:
+    def __init__(self):
+        self.buf_jpos = np.zeros((4, 12)) # ignore wheel jpos
+        self.buf_jvel = np.zeros((4, 16))
+        self.buf_act = np.zeros((2, 16))
+
+        self.jkp = np.zeros(16)
+        self.jkp[:12] = 40.0
+        self.jkd = np.zeros(16)
+        self.jkd[:12] = 1.0; self.jkd[12:] = 2.0
+
+        self.wheel_scaling = 2.0
+        self.leg_scaling = 0.5
+        self.applied_action = np.zeros(16)
 
 
 class LCMControl:
@@ -62,20 +51,9 @@ class LCMControl:
             self.lc_gamepad = lcm.LCM("udpm://239.255.76.67:7667?ttl=255")
             self.lc_gamepad.subscribe("gamepad2controller", self.handle_gamepad)
         
-        self.buf_jpos = np.zeros((4, 12)) # ignore wheel jpos
-        self.buf_jvel = np.zeros((4, 16))
-        self.buf_act = np.zeros((2, 16))
-        
-        self.jkp = np.zeros(16)
-        self.jkp[:12] = 40.0
-        self.jkd = np.zeros(16)
-        self.jkd[:12] = 1.0; self.jkd[12:] = 2.0
-        
-        self.act_scaling = np.zeros(16)
-        self.act_scaling[:12] = 0.5; self.act_scaling[12:] = 2.0
-        self.applied_action = np.zeros(16)
+        self.data = Data()
 
-        self.def_jpos = np.array(default_joint_pos)
+        self.def_jpos = np.array(DEFAULT_JOINT_POS)
         self.rot = R.identity()
         self.gyro = np.zeros(3)
         
@@ -88,8 +66,8 @@ class LCMControl:
         self.cmd_mode = np.array([1, 0, 0, 0])
         self.task_command = np.zeros(13)
 
-        self.isaac2real = [joint_names_isaac.index(name) for name in joint_names_real]
-        self.real2isaac = [joint_names_real.index(name) for name in joint_names_isaac]
+        self.isaac2real = [JOINT_NAMES_ISAAC.index(name) for name in joint_names_real]
+        self.real2isaac = [joint_names_real.index(name) for name in JOINT_NAMES_ISAAC]
         
         self.Mode = "RL" # "Passive"
         self.RL_Mode = "RL_Dog"
@@ -214,10 +192,6 @@ class LCMControl:
 
         self.jpos = np.asarray(self.state_msg.q)[self.real2isaac]
         self.jvel = np.asarray(self.state_msg.qd)[self.real2isaac]
-        self.buf_jpos = np.roll(self.buf_jpos, 1, axis=0)
-        self.buf_jpos[0] = self.jpos[:12] # ignore wheel jpos
-        self.buf_jvel = np.roll(self.buf_jvel, 1, axis=0)
-        self.buf_jvel[0] = self.jvel
 
         self.quat_xyzw = np.asarray(self.state_msg.quat)[[1, 2, 3, 0]]
         self.rot = R.from_quat(self.quat_xyzw)
@@ -261,12 +235,17 @@ class LCMControl:
             self.gamepad_initialized = True
     
     def compute_observation(self):
+        self.data.buf_jpos = np.roll(self.data.buf_jpos, 1, axis=0)
+        self.data.buf_jpos[0] = self.jpos[:12] # ignore wheel jpos
+        self.data.buf_jvel = np.roll(self.data.buf_jvel, 1, axis=0)
+        self.data.buf_jvel[0] = self.jvel
+
         observation = np.concatenate([
             self.gyro,
             self.projected_gravity,
-            self.buf_jpos.flatten(),
-            self.buf_jvel.flatten(),
-            self.buf_act.flatten(),
+            self.data.buf_jpos.flatten(),
+            self.data.buf_jvel.flatten(),
+            self.data.buf_act.flatten(),
         ], dtype=np.float32)
         return observation[None, :]
     
@@ -289,15 +268,20 @@ class LCMControl:
     
     def parse_action(self, action: np.ndarray):
         assert len(action) == 16
-        self.buf_act = np.roll(self.buf_act, 1, axis=0)
-        self.buf_act[0] = action
-        self.applied_action = self.applied_action * 0.2 + action * 0.8
-        applied_action = self.applied_action * self.act_scaling
+        self.data.buf_act = np.roll(self.data.buf_act, 1, axis=0)
+        self.data.buf_act[0] = action
+        self.data.applied_action = self.data.applied_action * 0.2 + action * 0.8
+        leg_action, wheel_action = np.split(self.data.applied_action, [12])
 
         # leg actions
         q_des = self.def_jpos.copy()
-        q_des[:12] += applied_action[:12]
+        q_des[:12] += leg_action * self.data.leg_scaling
         # wheel actions
         qd_des = np.zeros(16)
-        qd_des[12:] = applied_action[12:]
-        return q_des[self.isaac2real], qd_des[self.isaac2real], self.jkp, self.jkd
+        qd_des[12:] = wheel_action * self.data.wheel_scaling
+        return (
+            q_des[self.isaac2real],
+            qd_des[self.isaac2real],
+            self.data.jkp[self.isaac2real],
+            self.data.jkd[self.isaac2real]
+        )
