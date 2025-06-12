@@ -14,7 +14,8 @@ from sirius_deploy.interface.controller import KeyboardController
 MODEL_PATH = Path(__file__).parent / "sirius_wheel" / "sirius_wheel.xml"
 
 class MujocoInterface:
-    def __init__(self, model_path: str = MODEL_PATH):
+    def __init__(self, use_gamepad: bool = False, model_path: str = MODEL_PATH):
+        self.use_gamepad = use_gamepad
         self.mj_model = mujoco.MjModel.from_xml_path(str(model_path))
         self.mj_data = mujoco.MjData(self.mj_model)
 
@@ -43,6 +44,8 @@ class MujocoInterface:
         self.cmd_stand_hei = np.zeros(1)
         self.cmd_phase = np.zeros(1)
         self.cmd_mode = np.array([1, 0, 0, 0])
+        self.cmd_time = 0.
+        self.des_contact = np.zeros(4)
         self.task_command = np.zeros(13)
 
         self.isaac2mujoco = [JOINT_NAMES_ISAAC.index(name) for name in self.joint_names_mujoco]
@@ -116,22 +119,30 @@ class MujocoInterface:
         return observation[None, :]
     
     def compute_command(self):
-        self.controller.update()
-        self.cmd_lin_vel[0] = self.controller.x
-        self.cmd_lin_vel[1] = self.controller.y
-        self.cmd_ang_vel[2] = self.controller.yaw_rate
-        # self.cmd_lin_vel[0] = self.gamepad_command["left_stick"][1]
-        # self.cmd_lin_vel[1] = self.gamepad_command["right_stick"][0]
-        # self.cmd_ang_vel[2] = self.gamepad_command["left_stick"][0]
-
+        if self.use_gamepad:
+            self.cmd_lin_vel[0] = self.gamepad_command["left_stick"][1]
+            self.cmd_lin_vel[1] = self.gamepad_command["right_stick"][0]
+            self.cmd_ang_vel[2] = self.gamepad_command["left_stick"][0]
+        else:
+            self.controller.update()
+            self.cmd_lin_vel[0] = self.controller.x
+            self.cmd_lin_vel[1] = self.controller.y
+            self.cmd_ang_vel[2] = self.controller.yaw_rate
+            self.des_contact = self.controller.des_contact
+        if self.controller.jump:
+            timing = np.array([self.controller.cmd_time, 1 - self.controller.cmd_time])
+            self.cmd_mode = np.array([0, 0, 1, 0])
+        else:
+            timing = np.array([0., 0.])
+            self.cmd_mode = np.array([1, 0, 0, 0])
         command = np.concatenate([
             self.cmd_lin_vel[:2],
             self.cmd_ang_vel,
             self.cmd_roll,
             self.cmd_pitch,
-            self.cmd_phase,
-            1 - self.cmd_phase,
-            self.cmd_mode
+            timing,            
+            self.cmd_mode,
+            self.des_contact,
         ], dtype=np.float32)
         self.task_command = command
         return command[None, :]
