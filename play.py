@@ -12,11 +12,8 @@ from sirius_deploy.onnx_module import ONNXModule
 
 
 class RobotControl:
-    def __init__(self):
-        # self.lcm_interface = LCMControl(use_gamepad=False)
-        # self.lcm_interface.start()
-        # self.lcm_interface.send = True
-        self.interface = MujocoInterface()
+    def __init__(self, interface: MujocoInterface | LCMControl):
+        self.interface = interface
         self.interface.start()
 
         self.stand_flag = True
@@ -147,6 +144,7 @@ def cubicBezier(y0, yf, x):
     
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument("-i", "--interface", type=str, default="lcm")
     parser.add_argument("-p", "--path", type=str, default=None)
     args = parser.parse_args()
 
@@ -160,7 +158,14 @@ def main():
     else:
         policy = None
     
-    robot_control = RobotControl()
+    if args.interface == "mjc":
+        interface = MujocoInterface()
+    elif args.interface == "lcm":
+        interface = LCMControl(use_gamepad=False)
+    else:
+        raise ValueError(f"Invalid interface: {args.interface}")
+    
+    robot_control = RobotControl(interface)
     robot_control.run(policy)
 
 

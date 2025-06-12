@@ -15,6 +15,7 @@ from sirius_deploy.interface.lcm_types import (
 )
 from sirius_deploy.interface.constants import JOINT_NAMES_ISAAC, DEFAULT_JOINT_POS
 from sirius_deploy.timerfd import Timer
+from sirius_deploy.interface.controller import KeyboardController
 
 
 joint_names_real = [
@@ -50,6 +51,8 @@ class LCMControl:
         if self.use_gamepad:
             self.lc_gamepad = lcm.LCM("udpm://239.255.76.67:7667?ttl=255")
             self.lc_gamepad.subscribe("gamepad2controller", self.handle_gamepad)
+        else:
+            self.controller = KeyboardController()
         
         self.data = Data()
 
@@ -250,9 +253,15 @@ class LCMControl:
         return observation[None, :]
     
     def compute_command(self):
-        self.cmd_lin_vel[0] = self.gamepad_command["left_stick"][1]
-        self.cmd_lin_vel[1] = self.gamepad_command["right_stick"][0]
-        self.cmd_ang_vel[2] = self.gamepad_command["left_stick"][0]
+        if self.use_gamepad:
+            self.cmd_lin_vel[0] = self.gamepad_command["left_stick"][1]
+            self.cmd_lin_vel[1] = self.gamepad_command["right_stick"][0]
+            self.cmd_ang_vel[2] = self.gamepad_command["left_stick"][0]
+        else:
+            self.controller.update()
+            self.cmd_lin_vel[0] = self.controller.x
+            self.cmd_lin_vel[1] = self.controller.y
+            self.cmd_ang_vel[2] = self.controller.yaw_rate
 
         command = np.concatenate([
             self.cmd_lin_vel[:2],

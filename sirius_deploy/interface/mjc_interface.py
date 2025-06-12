@@ -9,6 +9,7 @@ from scipy.spatial.transform import Rotation as R
 from sirius_deploy.interface.constants import JOINT_NAMES_ISAAC, DEFAULT_JOINT_POS
 from sirius_deploy.interface.lcm_interface import Data
 from sirius_deploy.timerfd import Timer
+from sirius_deploy.interface.controller import KeyboardController
 
 MODEL_PATH = Path(__file__).parent / "sirius_wheel" / "sirius_wheel.xml"
 
@@ -48,6 +49,8 @@ class MujocoInterface:
         self.mujoco2isaac = [self.joint_names_mujoco.index(name) for name in JOINT_NAMES_ISAAC]
         
         self.set_command(*self.parse_action(np.zeros(16)))
+
+        self.controller = KeyboardController()
 
     @property
     def initialized(self):
@@ -113,6 +116,10 @@ class MujocoInterface:
         return observation[None, :]
     
     def compute_command(self):
+        self.controller.update()
+        self.cmd_lin_vel[0] = self.controller.x
+        self.cmd_lin_vel[1] = self.controller.y
+        self.cmd_ang_vel[2] = self.controller.yaw_rate
         # self.cmd_lin_vel[0] = self.gamepad_command["left_stick"][1]
         # self.cmd_lin_vel[1] = self.gamepad_command["right_stick"][0]
         # self.cmd_ang_vel[2] = self.gamepad_command["left_stick"][0]
