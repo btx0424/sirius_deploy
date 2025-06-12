@@ -262,15 +262,22 @@ class LCMControl:
             self.cmd_lin_vel[0] = self.controller.x
             self.cmd_lin_vel[1] = self.controller.y
             self.cmd_ang_vel[2] = self.controller.yaw_rate
-
+            self.des_contact = self.controller.des_contact
+        if self.controller.jump:
+            timing = np.array([self.controller.cmd_time, 1 - self.controller.cmd_time])
+            self.cmd_mode = np.array([0, 0, 1, 0])
+        else:
+            # timing = np.array([0., 1.])
+            timing = np.array([0., 0.])
+            self.cmd_mode = np.array([1, 0, 0, 0])
         command = np.concatenate([
             self.cmd_lin_vel[:2],
             self.cmd_ang_vel,
             self.cmd_roll,
             self.cmd_pitch,
-            self.cmd_phase,
-            1 - self.cmd_phase,
-            self.cmd_mode
+            timing,            
+            self.cmd_mode,
+            self.des_contact,
         ], dtype=np.float32)
         self.task_command = command
         return command[None, :]
