@@ -67,7 +67,6 @@ class LCMControl:
         self.cmd_stand_hei = np.zeros(1)
         self.cmd_phase = np.zeros(1)
         self.cmd_mode = np.array([1, 0, 0, 0])
-        self.task_command = np.zeros(13)
 
         self.isaac2real = [JOINT_NAMES_ISAAC.index(name) for name in joint_names_real]
         self.real2isaac = [joint_names_real.index(name) for name in JOINT_NAMES_ISAAC]
@@ -103,7 +102,9 @@ class LCMControl:
         timestr = time.strftime("%Y%m%d_%H%M%S")
         self.log_dir = f"logs/{timestr}"
         os.makedirs(self.log_dir, exist_ok=True)
-        command_dim = 13
+        command_dim = 13 + 4
+        self.task_command = np.zeros(command_dim)
+
         init_length = 1000
         self.log_file = h5py.File(f"{self.log_dir}/log.h5", "w")
         self.log_file.attrs["ptr"] = 0 # pointer to the current index of the log
@@ -111,7 +112,9 @@ class LCMControl:
         self.log_file.create_dataset("gyro", data=np.zeros((init_length, 3)), maxshape=(None, 3))
         self.log_file.create_dataset("projected_gravity", data=np.zeros((init_length, 3)), maxshape=(None, 3))
         self.log_file.create_dataset("jpos", data=np.zeros((init_length, 16)), maxshape=(None, 16))
+        self.log_file.create_dataset("jpos_des", data=np.zeros((init_length, 16)), maxshape=(None, 16))
         self.log_file.create_dataset("jvel", data=np.zeros((init_length, 16)), maxshape=(None, 16))
+        self.log_file.create_dataset("jvel_des", data=np.zeros((init_length, 16)), maxshape=(None, 16))
         self.log_file.create_dataset("action", data=np.zeros((init_length, 16)), maxshape=(None, 16))
         self.log_file.create_dataset("quat", data=np.zeros((init_length, 4)), maxshape=(None, 4))
         self.log_file.create_dataset("command", data=np.zeros((init_length, command_dim)), maxshape=(None, command_dim))
@@ -144,9 +147,11 @@ class LCMControl:
         self.log_file["gyro"][self.step_count] = self.gyro
         self.log_file["projected_gravity"][self.step_count] = self.projected_gravity
         self.log_file["jpos"][self.step_count] = self.jpos
+        self.log_file["jpos_des"][self.step_count] = self.jpos_des
         self.log_file["jvel"][self.step_count] = self.jvel
+        self.log_file["jvel_des"][self.step_count] = self.jvel_des
         self.log_file["quat"][self.step_count] = self.quat_xyzw
-        self.log_file["action"][self.step_count] = self.applied_action
+        self.log_file["action"][self.step_count] = self.data.applied_action
         self.log_file["command"][self.step_count] = self.task_command
         if self.step_count == max_ptr-1: # expand the log file
             max_ptr += 1000
@@ -290,14 +295,14 @@ class LCMControl:
         leg_action, wheel_action = np.split(self.data.applied_action, [12])
 
         # leg actions
-        q_des = self.def_jpos.copy()
-        q_des[:12] += leg_action * self.data.leg_scaling
+        self.jpos_des = self.def_jpos.copy()
+        self.jpos_des[:12] += leg_action * self.data.leg_scaling
         # wheel actions
-        qd_des = np.zeros(16)
-        qd_des[12:] = wheel_action * self.data.wheel_scaling
+        self.jvel_des = np.zeros(16)
+        self.jvel_des[12:] = wheel_action * self.data.wheel_scaling
         return (
-            q_des[self.isaac2real],
-            qd_des[self.isaac2real],
+            self.jpos_des[self.isaac2real],
+            self.jvel_des[self.isaac2real],
             self.data.jkp_isaac[self.isaac2real],
             self.data.jkd_isaac[self.isaac2real]
         )
