@@ -244,7 +244,7 @@ class LCMControl:
         self.data.buf_jvel[0] = self.jvel
 
         observation = np.concatenate([
-            self.gyro,
+            # self.gyro,
             self.projected_gravity,
             self.data.buf_jpos.flatten(),
             self.data.buf_jvel.flatten(),
